@@ -7,57 +7,62 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace Proxy
 {
     class Program
     {
-        static void Main(string[] args)
+        private static async Task Main(string[] args)
         {
-   
-            IPAddress localHostAddres = IPAddress.Parse("127.0.0.1");
+            await ProxyServerAsync();
+        }
+
+        private static async Task ProxyServerAsync()
+        {
+            var localHostAddres = IPAddress.Parse(ServerInfo.LocalHostIP);
             int port = 1234;
-            TcpListener server = new TcpListener(localHostAddres, port);       
-            server.Start();
-  
+
+            var proxyTcpServer = new TcpListener(localHostAddres, port);
+            proxyTcpServer.Start();
+
             while (true)
             {
                 try
-                {
+                {     
                     // Подключение клиента
-                    TcpClient client = server.AcceptTcpClient();
-                    NetworkStream clientStream = client.GetStream();
+                    var client = await proxyTcpServer.AcceptTcpClientAsync();
+                    var clientStream = client.GetStream();
 
                     // Обмен данными
-                    try
+                    Task.Run(async delegate
                     {
-
-                        var completeClientMessage = StreamUtilities.ReadStream(clientStream);
-
-                        Console.WriteLine(completeClientMessage.Count());
-
-                        Task.Run(delegate
+                        try
                         {
-                            var responseFromServer = StreamUtilities.GetServerResponse(1240, completeClientMessage);
-                            clientStream.Write(responseFromServer, 0, responseFromServer.Length);
+                            var speechServerInfo = ServersRepository.Repository.GetLeastBusyServer();
+                            await StreamUtilities.DoComunicationWithServerAsync(speechServerInfo, clientStream);
+                            ServersRepository.Repository.ReleaseServer(speechServerInfo);
 
+                        }
+                        finally
+                        {
                             clientStream.Close();
                             client.Close();
-                        }
-                        );          
-
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e);
-                    }
-                    finally
-                    {
-                  
-                    }
+                        };
+                    });
+       
                 }
-                catch
+                catch (Exception e)
                 {
-                    server.Stop();
+                    Console.WriteLine(e);
+                    proxyTcpServer.Stop();
                     break;
                 }
 
@@ -65,3 +70,4 @@ namespace Proxy
         }
     }
 }
+
